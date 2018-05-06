@@ -1,0 +1,366 @@
+---
+title: "Final Project"
+author: "Adam Forestier"
+date: "May 11, 2018"
+output:
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+### Clear Current Environment
+```{r}
+rm(list = ls())
+```
+
+### Load Key packages
+```{r}
+require(dplyr)
+require(magrittr)
+require(webshot)
+```
+
+### Read in data
+```{r}
+df <- read.csv("data.txt", header = TRUE)
+```
+
+## Model Selection Process
+
+Dataset includes 95,775 rows and 481 unique variables.
+
+To begin my modeling process, I will be selecting 13 variables. The first is "TARGET_B," what we are investigating. The other 12 I believe could have a strong impact on the target variable. The data types of the variables I selected to investigate include the following: 7 categorical and 5 continuous. To increase efficiency of program run-time I will be creating a subset of the original data set. This subset includes only the 12 variables I believe have the potential to be key in predicting whether or not an individual will donate; saving the company money on mailings, while also getting expected returns on donations. In turn the veterans non-profit organization should have greater gross profit from increased savings and similar donation returns. 
+
+Note: This subsetted data frame will come into use in modeling portion of the report, following the visualization section.
+
+Categorical Variables Include the Following: TARGET_B, VETERANS, HOMEOWNR, BIBLE, WEALTH2, GENDER, INCOME, and NGIFTALL
+Continuous Variables Include the Following: AGE, POP901, RAMNTALL, TIMELAG
+
+## Data Definitions
+Categorical:
+  TARGET_B -Whether or not the individual donated
+  VETERANS - Whether or not individual was a veteran 
+  HOMEOWNR - Home Owner
+  BIBLE - Reads Bible
+  WEALTH2 - Wealth Rating
+  GENDER - Male or Female
+  STATE - State individual resides in 
+  INCOME - Household Income (Based on levels)
+  
+Continuous
+  AGE - Overlay Age 
+  POP901 - Number of persons in neighborhood
+  RAMNTALL - Dollar amount of lifetime gifts to date
+  NGIFTALL - Number of lifetime gifts to date
+  TIMELAG - Number of months between first and second gift
+
+
+### Create subset of data using dplyr select statement and magrittr piping
+```{r}
+subDf <- df %>% select(TARGET_B, VETERANS, HOMEOWNR, BIBLE, WEALTH2, GENDER, STATE, INCOME, AGE, POP901, RAMNTALL, NGIFTALL, TIMELAG)
+```
+
+
+### Show structure of new data frame
+```{r}
+subDf$TARGET_B <- as.factor(subDf$TARGET_B)
+subDf$WEALTH2 <- as.factor(subDf$WEALTH2)
+str(subDf)
+```
+
+### Show total donators vs non-donators
+```{r}
+table(subDf$TARGET_B)
+```
+
+### Percentage of donators
+```{r}
+round(length(which(subDf$TARGET_B == 1))/length(subDf$TARGET_B) * 100, 2)
+```
+
+
+## Visualize Data
+In this section I will be visually investigating to see how the variables I perceived to be valuable affect both TARGET_B; the binary yes or no donation variable, as well as TARGET_D; the continuous variable that tells how much an individual donated to the paralyzed veterans organization
+
+### Load visualization packages
+```{r}
+require(ggplot2)
+require(plotly)
+require(fiftystater)
+```
+
+### Show barplot of donatations
+Plot in R
+```{r}
+# Convert binary data from 0 and 1 to text
+plotBar <- df
+plotBar$TARGET_B <- ifelse(df$TARGET_B == 0,"Non-Donator","Donator")
+
+# Plot
+donateBar <- ggplot(data = plotBar, aes(x = TARGET_B, fill = TARGET_B))
+donateBar <- donateBar + geom_bar()
+donateBar <- donateBar + xlab("Donated")
+donateBar <- donateBar + ylab("Number")
+donateBar <- donateBar + ggtitle("Donator vs. Non-Donatator")
+donateBar
+```
+
+### Show density of TARGET_D of donations
+```{r}
+ggplot(df, aes(TARGET_D, fill="Mean Donated")) +
+  geom_density(adjust=5) +
+  xlim(0, 35) +
+  ggtitle("Kernal Density Plot of Donation Totals") +
+  xlab("Amount Donated") +
+  ylab("Density")
+```
+
+It appears the majority of individuals who were mailed, did not donate; and those who did, typically donated little
+
+### Stacked bar graph to show proportion of VETERANs who are non-donators and donators compared to the rest of the population
+```{r}
+plotBar$VETERANS <- ifelse(df$VETERANS == "Y","Yes","No")
+g <- ggplot(plotBar, aes(TARGET_B))
+g <- g + geom_bar()
+g + geom_bar(aes(fill = VETERANS))
+
+```
+
+According to this visualization, it appears that non-donating and donating VETERANS are approximately similar to non-veterans. Perhaps the VETERANS variable is not a good predictor for donations
+
+### Boxplot of Gender Donations
+```{r}
+# Create Data Frame with Donation and gender
+genderDonation <- df %>%
+  select(GENDER, TARGET_D) 
+
+# Only show subset of individuals who have donated greater than $0
+genderDonation <-  subset(genderDonation, TARGET_D > 0)
+
+# Use plotly to show range of donations by gender
+plot_ly(genderDonation, x = genderDonation$GENDER, y = genderDonation$TARGET_D, color = genderDonation$GENDER, type = "box") %>%
+  layout(title = "Donation Range by Gender",
+           xaxis = list(title="Gender"),
+           yaxis = list(title="Donation Amount"))
+```
+
+Important Notes on factor levels: J = Joint Account, U = Unkown, 'blank' = not listed, F = Female, M = Male C = No donations
+
+This boxplot shows the range of donations by gender (Considering only the individuals who donated). Males appear to have the highest of all the 5 number summary values except for min and a tie for max with female 
+
+### Show total number of individuals who donated by state
+```{r}
+# Create data frame with state and yes or no donated variable
+stateCountDonated <- df %>% select(STATE, TARGET_B)
+
+# Keep only individuals who donated
+stateCountDonated <- subset(stateCountDonated, TARGET_B > 0)
+
+stateCountDonated <- stateCountDonated %>%
+  group_by(STATE) %>% 
+  summarise(count_donated = sum(TARGET_B))
+
+plot_ly(stateCountDonated, 
+        x = stateCountDonated$STATE, y = stateCountDonated$count_donated, type = "scatter", mode = "lines") %>% 
+  layout(title = "Number of Individuals who Donated by State",
+           xaxis = list(title="State"),
+           yaxis = list(title="Donator Count"))
+```
+
+California has the highest amount of donators at 1295 with Florida in second at 850. While California has many donators, it must be kept in mind that they also have a very large population that could affect results
+
+
+### Show average donation by state (only counting those who donated)
+```{r}
+# Create data frame with state and donation amount
+stateAvgDonation <-  df %>% select(STATE, TARGET_D)
+
+# Subset to only have data on individuals who donated
+stateAvgDonation <-  subset(stateAvgDonation, TARGET_D > 0)
+
+# Create grouping
+stateAvgDonation <- stateAvgDonation %>%
+  group_by(STATE) %>% 
+  summarise(state_avg = mean(TARGET_D))
+
+plot_ly(stateAvgDonation, 
+        x = stateAvgDonation$STATE, y = stateAvgDonation$state_avg, type = "scatter", mode = "lines") %>% 
+  layout(title = "Average Donation by State for Individuals who Donated",
+           xaxis = list(title="State"),
+           yaxis = list(title="Donation Average"))
+```
+
+It appears that "AE" is the highest donated. AE stands for Armed Forces Africa. It makes sense that current military individuals would be generous in donations. For actual states, Florida is the highest average at $25.45 per donation and Idaho is in close second at $24.84 per donation. 
+
+
+
+Florida may be a very good state to target, as it has the second highest number of donators and the highest average of Dollars per donation in the Continental United States
+
+
+### Visual relationship between continuous variables age and ramntall (Dollar amount of lifetime gifts to date)
+
+```{r}
+plot_ly(df, x = ~AGE, y = ~RAMNTALL, color = ~TARGET_D) %>%
+    layout(title = "Age, Total Donation, and Individual Donation Time Amount",
+           xaxis = list(title="Age"),
+           yaxis = list(title="Life Time Donations"))
+```
+
+Many different understandings of the data can be gathered from this three-dimensional visualization. First is that there appears to be a slight increase in total giving from individuals at age 20-40. At age 40 it seems to even for the most part excluding outliers. It also appears that those who give the largest donations one time, are not necessarily the most generous over time. In fact the data shows the most extreme giver has given close to $6,000 over his life, but has not donated more than $50 at one time. Individuals who donated and that are less than 10 years old can be assumed to not be the real donator, but have had the donation made in their name
+
+## Relationships of my variables in subsetted data frame
+
+
+### Load Corrplot package
+```{r}
+require(corrplot)
+```
+
+### Show correlation table of how numeric data is related to each other
+```{r}
+# Create a further subset of only numeric data
+numericSub <- select_if(subDf, is.numeric)
+
+# Creates a correlation table showing variables correlate w/ each other by number and text color. Values Rounded to 1 
+num_correlation <- round(cor(numericSub, use = "pairwise.complete.obs", method = "pearson"),1)
+corrplot(num_correlation, method = "number")
+```
+
+It does not appear that much of the numeric data is highly correlated. The only remotely strong correlation resides between total number of donations and total amount given in donations. In a very shocking twist, it appears that wealth attributes and total times given donations have been given have a slightly negative correction. This could easily be explained as wealthy individuals only wanting to give one large donation once, however total amount given and income do not seem to be correlated at all. This warrants further investigation.
+
+
+### Load packages for model building
+```{r}
+require(caret)
+require(e1071)
+require(rpart)
+require(rpart.plot)
+require(gbm)
+require(InformationValue)
+```
+
+## Machine Learning Modeling
+
+### Convert binary variables to 1s and 0s
+```{r}
+subDf$VETERANS <- ifelse(subDf$VETERANS == "Y","1","0")
+subDf$BIBLE <- ifelse(subDf$BIBLE == "Y","1","0")
+```
+
+
+### Create 10-Fold validation configuration of control
+```{r}
+fitControl <- trainControl(method = "cv", number = 10)
+```
+
+### Training a logistic Regression Model
+```{r}
+# Remove na's to make modeling possible
+noNaSub <- na.omit(subDf)
+set.seed(1234)
+logFit <- glm(TARGET_B ~.,
+              family=binomial(link='logit'),
+              data = noNaSub)
+summary(logFit)
+```
+
+Many of the variables have very low p-values which show that they could be strongly related to Target_B
+
+
+### Accuracy of model
+```{r}
+# Predict on data
+pred <- predict(logFit, newdata = noNaSub, type = "response")
+
+prediction <- ifelse(pred > 0.5, 1, 0)
+real <- noNaSub$TARGET_B
+
+# Show accuracy
+mean(prediction == real)
+```
+
+96 % Accuaracy sounds good in theory, the confusion matrix below should indicate how the model did in predicting the binary variables independently
+
+
+### Logistic Regression Model Confusion Matrix
+```{r}
+caret::confusionMatrix(prediction, real, positive="1", mode="everything")
+```
+
+With a high accuracy, high range of confidence intervals, low p-value, and accurate prediction of non-donators, the model appears to be in good shape. However, the model appears to have issue with False Negative Errors, meaning that the model predicts the individual to not be a donator when they actually are.
+
+### Plot ROC Curve to visualize specificity and sensitivity
+```{r}
+InformationValue::plotROC(real, prediction)
+InformationValue::AUROC(real, prediction)
+```
+
+The ROC Curve is moderately high.
+
+### KS Chart
+```{r}
+ks_plot(real, prediction)
+```
+
+
+### Calculate the McFadden R2 for the logistic regression model
+
+```{r}
+# Fit null model
+nullModel <- glm(TARGET_B ~ 1,family=binomial(link='logit'), data=subDf)
+
+# Calculate McFadden R2
+cat("McFadden pseudo R2 = ", 1-logLik(logFit)/logLik(nullModel))
+```
+
+An R2 value of .70 is fairly decent.
+
+### Remove na's to make decision tree type modeling possible
+```{r}
+noNaSub <- na.omit(subDf)
+```
+
+### Training a decision tree model 
+```{r}
+# Set seed to obtain same results each time
+set.seed(1234)
+
+# Train Decision Tree Model
+decisionTree <- train(TARGET_B ~.,
+            data = noNaSub,
+            method = "rpart",
+            trControl = fitControl,
+            tuneLength = 10,
+            parms=list(split='information'))
+
+print(decisionTree)
+```
+
+### Visualize the decision tree
+```{r}
+rpart.plot::rpart.plot(decisionTree$finalModel)
+```
+
+
+### Training Gradient Boosted Machine Model
+```{r}
+# Set seed to obtain same result each run
+set.seed(1234)
+
+# Train gradient boosted model
+gbmFit <- train(TARGET_B ~.,
+                 data = noNaSub,
+                 trControl = fitControl,
+                 method = "gbm",
+                 verbose = F)
+
+print(gbmFit)
+```
+
+
+## Comparision of Models
+
+All three model types predict at extremly high accuracy rates. Unfortunately due to the sensitivity of the data, the models struggled to accurately predict when individuals would donate, resulting in type 2 errors in the logistic regression model, and lower kappa scores on the decision tree, and gradient boosted machine models. I believe that there is potential in the model due to its extremely high accuracy at predicting non-donors. However, the goal was to eliminate non-donors from the mailing pool to decrease costs. The models very accurately determine non-donors and do find many donors as well. While the models are not perfect in the sense they always predict donors at their current states; using these models will result in large savings as it predicts who will not donate, and does always infer sure donators as well.
